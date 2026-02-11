@@ -344,10 +344,12 @@ function storeMemoryMarkdownKV(key, value, agentId) {
     
     let file;
     let content = '';
+    let fileExists = false;
     
     if (existingFiles.hasNext()) {
       file = existingFiles.next();
       content = file.getBlob().getDataAsString();
+      fileExists = true;
     } else {
       // Create new memory file
       content = '# Agent Memory: ' + agentId + '\n\n';
@@ -360,7 +362,7 @@ function storeMemoryMarkdownKV(key, value, agentId) {
     const newEntry = '**' + key + '**: ' + value + ' _(timestamp: ' + timestamp + ')_\n\n';
     content += newEntry;
     
-    if (existingFiles.hasNext()) {
+    if (fileExists) {
       file.setContent(content);
     } else {
       file = logsFolder.createFile(memoryFileName, content, MimeType.PLAIN_TEXT);
