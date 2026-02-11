@@ -101,7 +101,7 @@ The AuditLogs sheet stores these thought signatures with the following columns:
 
 | Timestamp | Agent | Action | Status | Details | ThoughtSignature | Memory |
 |-----------|-------|--------|--------|---------|------------------|--------|
-| 2026-02-11T06:00:00.000Z | gatekeeper-001 | DATA_VALIDATION | LOGGED | {...} | {timestamp, decision, reasoning, confidence} | markdown-kv reference |
+| 2026-02-11T06:00:00.000Z | gatekeeper-001 | DATA_VALIDATION | SUCCESS | {...} | {timestamp, decision, reasoning, confidence} | markdown-kv reference |
 
 ## Benefits of Thought Signatures
 

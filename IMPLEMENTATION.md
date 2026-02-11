@@ -115,7 +115,7 @@ This document summarizes the implementation of the Financial Restoration AI Team
 ```
 /home/runner/work/finagents/finagents/
 ├── .gitignore                          # Git ignore patterns
-├── Code.gs                             # Main Apps Script code (540 lines)
+├── Code.gs                             # Main Apps Script code (920 lines)
 ├── appsscript.json                     # Apps Script manifest
 ├── README.md                           # Comprehensive documentation
 ├── QUICKSTART.md                       # Quick start guide

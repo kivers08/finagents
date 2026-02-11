@@ -39,6 +39,9 @@ const STATUS = {
 
 /**
  * Rate limiting helper to prevent API quota exhaustion
+ * Note: This implementation only rate-limits within a single Apps Script execution.
+ * For cross-execution/concurrent rate limiting, use PropertiesService or CacheService
+ * with LockService to store counters and prevent race conditions.
  */
 function checkRateLimit() {
   const now = Date.now();
@@ -84,7 +87,6 @@ function checkForDuplicates(iterator, resourceName) {
 
   if (resources.length > 1) {
     const message = 'WARNING: Multiple ' + resourceName + ' found (' + resources.length + '). Using the first one.';
-    Logger.log(message);
     logToAuditLogs({
       timestamp: new Date().toISOString(),
       agent: 'SYSTEM',
@@ -107,8 +109,37 @@ function onOpen() {
     .addItem('Create Folder Structure', 'createAIAgentsFolders')
     .addItem('Create Financial Command Sheet', 'createFinancialCommandSheet')
     .addItem('Generate Gatekeeper AgentCard', 'generateGatekeeperCard')
-    .addItem('Log Thought Signature', 'logThoughtSignature')
+    .addItem('Log Thought Signature', 'logThoughtSignatureFromMenu')
     .addToUi();
+}
+
+/**
+ * Wrapper for logging a Thought Signature from the spreadsheet UI.
+ * Prompts the user for minimal information to construct a thought object.
+ */
+function logThoughtSignatureFromMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.prompt(
+    'Log Thought Signature',
+    'Enter a brief description of the decision or thought to log:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (response.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  const thought = {
+    agent: 'gatekeeper-001',
+    action: 'MANUAL_LOG',
+    decision: response.getResponseText(),
+    reasoning: 'Manually logged from UI',
+    confidence: 1.0,
+    details: {}
+  };
+
+  logThoughtSignature(thought);
+  ui.alert('Thought signature logged successfully!');
 }
 
 /**
@@ -412,7 +443,7 @@ function generateGatekeeperCard() {
     agent_id: 'gatekeeper-001',
     agent_name: 'Financial Gatekeeper',
     agent_type: 'gatekeeper',
-    version: '1.0.0',
+    version: '1.1.0',
     protocol: 'A2A',
     created: new Date().toISOString(),
     
@@ -426,14 +457,13 @@ function generateGatekeeperCard() {
     
     endpoints: {
       validate: 'validateFinancialData',
-      route: 'routeDataToFolder',
-      authorize: 'authorizeAccess'
+      route: 'routeDataToFolder'
     },
     
     // Step 5: Memory configuration using Markdown-KV
     memory: {
       format: 'markdown-kv',
-      storage: '04_LOGS/gatekeeper_memory.md',
+      storage: '04_LOGS/gatekeeper-001_memory.md',
       structure: {
         type: 'key-value',
         syntax: 'markdown',
@@ -549,22 +579,26 @@ function storeMemoryMarkdownKV(key, value, agentId) {
       }
 
       // Check file size and rotate if needed
-      if (MEMORY_CONFIG.ROTATION_ENABLED && content.length > MEMORY_CONFIG.MAX_FILE_SIZE) {
-        const archiveTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const archiveName = agentId + '_memory_archive_' + archiveTimestamp + '.md';
-        file.setName(archiveName);
+      // Note: Using blob bytes for accurate size measurement
+      if (MEMORY_CONFIG.ROTATION_ENABLED) {
+        const fileSizeBytes = file.getBlob().getBytes().length;
+        if (fileSizeBytes > MEMORY_CONFIG.MAX_FILE_SIZE) {
+          const archiveTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const archiveName = agentId + '_memory_archive_' + archiveTimestamp + '.md';
+          file.setName(archiveName);
 
-        logToAuditLogs({
-          timestamp: new Date().toISOString(),
-          agent: agentId,
-          action: 'MEMORY_ROTATION',
-          status: STATUS.SUCCESS,
-          details: 'Memory file rotated. Archive: ' + archiveName + ', Size: ' + content.length + ' bytes'
-        });
+          logToAuditLogs({
+            timestamp: new Date().toISOString(),
+            agent: agentId,
+            action: 'MEMORY_ROTATION',
+            status: STATUS.SUCCESS,
+            details: 'Memory file rotated. Archive: ' + archiveName + ', Size: ' + fileSizeBytes + ' bytes'
+          });
 
-        // Create new memory file
-        fileExists = false;
-        content = '';
+          // Create new memory file
+          fileExists = false;
+          content = '';
+        }
       }
     }
 
@@ -612,6 +646,9 @@ function storeMemoryMarkdownKV(key, value, agentId) {
  * Step 8: Log Thought Signature to AuditLogs
  */
 function logThoughtSignature(thought) {
+  // Safe default agent ID for error handling
+  const safeAgentId = (thought && thought.agent) ? thought.agent : 'UNKNOWN';
+  
   try {
     const spreadsheet = getFinancialCommandSheet();
     const auditSheet = spreadsheet.getSheetByName('AuditLogs');
@@ -661,7 +698,7 @@ function logThoughtSignature(thought) {
     const errorMsg = 'Error logging thought signature: ' + error.toString();
     logToAuditLogs({
       timestamp: new Date().toISOString(),
-      agent: thought.agent || 'UNKNOWN',
+      agent: safeAgentId,
       action: 'THOUGHT_SIGNATURE',
       status: STATUS.ERROR,
       details: errorMsg
@@ -707,9 +744,10 @@ function logToAuditLogs(logEntry) {
  */
 function getFinancialCommandSheet() {
   const files = DriveApp.getFilesByName(SHEET_CONFIG.NAME);
-  if (files.hasNext()) {
-    const file = files.next();
-    return SpreadsheetApp.openById(file.getId());
+  const targetFile = checkForDuplicates(files, 'FINANCIAL_COMMAND sheet');
+  
+  if (targetFile) {
+    return SpreadsheetApp.openById(targetFile.getId());
   }
   
   // Create if not exists
@@ -734,8 +772,8 @@ function validateFinancialData(data) {
     data.type = sanitizeInput(data.type);
   }
 
-  // Validate amount
-  if (!data.amount) {
+  // Validate amount - use explicit check for null/undefined to allow zero
+  if (data.amount === null || data.amount === undefined || data.amount === '') {
     validation.isValid = false;
     validation.errors.push('Amount is required');
   } else if (isNaN(data.amount)) {

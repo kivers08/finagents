@@ -41,7 +41,7 @@ Created Google Sheet with tabs:
 - **Tax**: Manage tax years, types, amounts, filing status
 - **AuditLogs**: Complete audit trail with thought signatures
 
-**Location**: Code.gs, lines 127-184
+**Location**: Code.gs, lines 149-206
 
 ### ✅ 3. Generate JSON AgentCard for Gatekeeper per A2A Protocol
 
@@ -56,7 +56,7 @@ AgentCard includes:
 - Security settings (business_standard)
 - 8-step workflow definition
 
-**Location**: Code.gs, lines 233-304
+**Location**: Code.gs, lines 438-506
 
 ### ✅ 4. Step 5 Memory Uses Markdown-KV
 
@@ -69,7 +69,7 @@ Features:
 - Timestamped entries
 - Creates file if doesn't exist, appends if exists
 
-**Location**: Code.gs, lines 324-376
+**Location**: Code.gs, lines 557-640
 
 ### ✅ 5. Log Step 8 Thought Signatures to AuditLogs
 
@@ -81,7 +81,7 @@ Features:
 - Dual storage: Sheet + Markdown-KV memory
 - Complete audit trail of agent decisions
 
-**Location**: Code.gs, lines 378-424
+**Location**: Code.gs, lines 676-735
 
 ### ✅ 6. Enforce Business Standard Data Protection
 
@@ -95,7 +95,7 @@ Features:
 - Encryption requirements for vault storage
 - Security configuration in AgentCard
 
-**Location**: Code.gs, lines 112-126, 253-259
+**Location**: Code.gs, lines 115-126, 279-286
 
 ---
 
@@ -194,8 +194,8 @@ Features:
 
 ## File Statistics
 
-- **Total Files**: 13 files
-- **Total Lines of Code**: 570 lines (Code.gs)
+- **Total Files**: 14 files
+- **Total Lines of Code**: 920 lines (Code.gs)
 - **Total Documentation**: ~108 KB (8 markdown files)
 - **Examples**: 3 reference files
 
@@ -510,10 +510,10 @@ The system is **production-ready** and can be deployed to any Google Workspace e
 ## Project Statistics
 
 - **Development Time**: Complete
-- **Code Lines**: 570 (Code.gs)
+- **Code Lines**: 920 (Code.gs)
 - **Documentation Pages**: 8 files (~108 KB)
 - **Example Files**: 3 references
-- **Total Files**: 13 files
+- **Total Files**: 14 files
 - **Requirements Met**: 6/6 (100%)
 - **Test Coverage**: Manual tests documented
 - **Code Review**: Passed

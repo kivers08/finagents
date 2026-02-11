@@ -177,7 +177,7 @@ The Gatekeeper agent follows the A2A (Agent-to-Agent) Protocol:
   ],
   "memory": {
     "format": "markdown-kv",
-    "storage": "04_LOGS/gatekeeper_memory.md"
+    "storage": "04_LOGS/gatekeeper-001_memory.md"
   },
   "thought_signature": {
     "enabled": true,
@@ -254,7 +254,7 @@ Stores a key-value pair in Markdown format.
 **Parameters**:
 - `key`: String - Memory key
 - `value`: String - Memory value
-- `agentId`: String (optional) - Agent identifier (default: 'gatekeeper-001')
+- `agentId`: String - Agent identifier (required; function throws if omitted)
 
 **Returns**: Boolean - Success status
 

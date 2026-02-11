@@ -290,21 +290,22 @@ initializeSystem();
 
 ## Error Handling Tests
 
-### Test 11: Missing Folder Error
+### Test 11: Missing Agent ID Error
 
 **Steps:**
 ```javascript
-// Attempt to store memory without creating folders
-const props = PropertiesService.getScriptProperties();
-props.deleteAllProperties();
-storeMemoryMarkdownKV('test', 'value');
+// Attempt to store memory without agentId
+try {
+  storeMemoryMarkdownKV('test', 'value');
+} catch (error) {
+  Logger.log('Expected error: ' + error);
+}
 ```
 
 **Expected Results:**
-- ✅ Function catches error
-- ✅ Returns false
-- ✅ Error logged to Logger
-- ✅ Error message: "AI AGENTS folder not found"
+- ✅ Function throws error
+- ✅ Error message: "Agent ID is required for memory storage"
+- ✅ Error logged to AuditLogs
 
 ### Test 12: Missing Sheet Error
 
@@ -329,7 +330,7 @@ logThoughtSignature({
 **Steps:**
 ```javascript
 for (let i = 0; i < 10; i++) {
-  storeMemoryMarkdownKV('bulk_test_' + i, 'value_' + i);
+  storeMemoryMarkdownKV('bulk_test_' + i, 'value_' + i, 'gatekeeper-001');
 }
 ```
 
