@@ -311,6 +311,141 @@ function createNewAgent(agentId, capabilities) {
 - **Memory Format**: Markdown-KV
 - **Logging**: Structured JSON + Markdown
 
+## Enterprise Enhancements (v1.1)
+
+The system has been enhanced with enterprise-grade features for production deployment:
+
+### 1. Duplicate Detection
+
+**Problem**: Multiple folders/sheets with the same name caused unpredictable behavior.
+
+**Solution**: Implemented `checkForDuplicates()` function that:
+- Detects multiple resources with identical names
+- Logs warnings to AuditLogs when duplicates are found
+- Uses the first resource and alerts operators
+- Prevents silent failures from iterator exhaustion
+
+**Impact**: Eliminates race conditions and improves system reliability.
+
+### 2. Memory File Rotation
+
+**Problem**: Memory files grew indefinitely, risking performance degradation and size limits.
+
+**Solution**: Automatic rotation when files exceed 1MB:
+```javascript
+const MEMORY_CONFIG = {
+  MAX_FILE_SIZE: 1048576, // 1MB
+  ROTATION_ENABLED: true
+};
+```
+- Archives old memory files with timestamps
+- Creates fresh memory file automatically
+- Logs rotation events to AuditLogs
+- Maintains complete audit trail
+
+**Impact**: Ensures sustainable long-term operation.
+
+### 3. Comprehensive Input Validation
+
+**Problem**: Basic validation missed edge cases and malformed data.
+
+**Solution**: Enhanced `validateFinancialData()` with:
+- Type checking against whitelist: debt, tax, income, expense, asset
+- Amount range validation (0 to 999,999,999.99)
+- Creditor name length limits (500 chars)
+- Date format validation
+- Negative number detection
+- Input sanitization for XSS protection
+
+**Impact**: Prevents invalid data from entering the system.
+
+### 4. Standardized Error Handling
+
+**Problem**: Inconsistent error handling - some functions threw errors, others returned false.
+
+**Solution**: Unified error handling approach:
+- All functions throw descriptive Error objects
+- Errors logged to AuditLogs before throwing
+- STATUS constants for consistent status codes
+- Fallback logging when AuditLogs unavailable
+
+```javascript
+const STATUS = {
+  SUCCESS: 'SUCCESS',
+  FAILURE: 'FAILURE',
+  INFO: 'INFO',
+  WARNING: 'WARNING',
+  ERROR: 'ERROR'
+};
+```
+
+**Impact**: Predictable error behavior, easier debugging.
+
+### 5. Rate Limiting
+
+**Problem**: Rapid API calls could exhaust Google Apps Script quotas.
+
+**Solution**: Implemented `checkRateLimit()`:
+- 60 calls per minute maximum
+- Automatic counter reset
+- Descriptive error messages with wait time
+- Applied to all Drive/Sheets operations
+
+**Impact**: Prevents quota exhaustion and script failures.
+
+### 6. XSS Protection
+
+**Problem**: Unvalidated user input could inject malicious content.
+
+**Solution**: `sanitizeInput()` function that:
+- Removes angle brackets (< >)
+- Strips javascript: protocol
+- Removes event handlers (on*=)
+- Limits input length to 10,000 characters
+- Applied to all user-provided strings
+
+**Impact**: Protects against cross-site scripting attacks.
+
+### 7. Enhanced Thought Signatures
+
+**Problem**: Validation failures didn't capture enough context for debugging.
+
+**Solution**: Explicit error/warning fields in thought signatures:
+```javascript
+details: {
+  data: data,
+  validation: validation,
+  errors: validation.errors,    // Explicit
+  warnings: validation.warnings  // Explicit
+}
+```
+
+**Impact**: Faster troubleshooting and better audit trails.
+
+### 8. Mandatory Agent ID
+
+**Problem**: Hardcoded defaults made multi-agent support difficult.
+
+**Solution**:
+- Removed `agentId = agentId || 'gatekeeper-001'` default
+- Agent ID now required parameter
+- Throws error if not provided
+- Facilitates future multi-agent deployments
+
+**Impact**: Better architecture for scaling to multiple agents.
+
+### 9. Unified Audit Logging
+
+**Problem**: Mixed use of Logger.log() and logToAuditLogs() created incomplete audit trails.
+
+**Solution**:
+- Replaced all Logger.log() calls with logToAuditLogs()
+- Fallback to Logger only when AuditLogs unavailable
+- Every significant operation logged
+- Consistent log format across all functions
+
+**Impact**: Complete, queryable audit trail.
+
 ## Deployment
 
 ### Development

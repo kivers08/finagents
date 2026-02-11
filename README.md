@@ -1,6 +1,24 @@
 # Financial Restoration AI Team - Google Apps Script
 
+**Version 1.1.0** - Enterprise-Ready Production Release
+
 A Google Apps Script implementation for building a financial restoration AI team in Google Workspace, following the A2A (Agent-to-Agent) Protocol with business-standard data protection.
+
+## What's New in v1.1.0 🎉
+
+This release includes **9 enterprise-grade enhancements** making the system production-ready:
+
+- ✅ **Duplicate Detection** - Warns when multiple resources share names
+- ✅ **Memory Rotation** - Automatic archiving at 1MB threshold
+- ✅ **Rate Limiting** - Prevents API quota exhaustion (60 calls/min)
+- ✅ **XSS Protection** - Input sanitization for security
+- ✅ **Comprehensive Validation** - 6 validation checks vs 2 previously
+- ✅ **Standardized Errors** - Consistent error handling across all functions
+- ✅ **Complete Audit Trail** - All operations logged to AuditLogs
+- ✅ **Enhanced Debugging** - Explicit error context in thought signatures
+- ✅ **Multi-Agent Ready** - Removed hardcoded agent ID defaults
+
+See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 ## Overview
 
