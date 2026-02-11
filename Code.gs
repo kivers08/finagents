@@ -15,6 +15,88 @@ const SHEET_CONFIG = {
   TABS: ['Debt', 'Tax', 'AuditLogs']
 };
 
+// Memory management constants
+const MEMORY_CONFIG = {
+  MAX_FILE_SIZE: 1048576, // 1MB in bytes
+  ROTATION_ENABLED: true
+};
+
+// Rate limiting configuration
+const RATE_LIMIT = {
+  MAX_CALLS_PER_MINUTE: 60,
+  lastCallTime: 0,
+  callCount: 0
+};
+
+// Status constants for standardized error handling
+const STATUS = {
+  SUCCESS: 'SUCCESS',
+  FAILURE: 'FAILURE',
+  INFO: 'INFO',
+  WARNING: 'WARNING',
+  ERROR: 'ERROR'
+};
+
+/**
+ * Rate limiting helper to prevent API quota exhaustion
+ */
+function checkRateLimit() {
+  const now = Date.now();
+  const oneMinute = 60000;
+
+  // Reset counter if a minute has passed
+  if (now - RATE_LIMIT.lastCallTime > oneMinute) {
+    RATE_LIMIT.callCount = 0;
+    RATE_LIMIT.lastCallTime = now;
+  }
+
+  RATE_LIMIT.callCount++;
+
+  if (RATE_LIMIT.callCount > RATE_LIMIT.MAX_CALLS_PER_MINUTE) {
+    const waitTime = oneMinute - (now - RATE_LIMIT.lastCallTime);
+    throw new Error('Rate limit exceeded. Please wait ' + Math.ceil(waitTime / 1000) + ' seconds.');
+  }
+}
+
+/**
+ * Sanitize input to prevent XSS and injection attacks
+ */
+function sanitizeInput(input) {
+  if (typeof input === 'string') {
+    // Remove potentially dangerous characters
+    return input
+      .replace(/[<>]/g, '') // Remove angle brackets
+      .replace(/javascript:/gi, '') // Remove javascript: protocol
+      .replace(/on\w+\s*=/gi, '') // Remove event handlers
+      .substring(0, 10000); // Limit length
+  }
+  return input;
+}
+
+/**
+ * Check for duplicate resources and warn if found
+ */
+function checkForDuplicates(iterator, resourceName) {
+  const resources = [];
+  while (iterator.hasNext()) {
+    resources.push(iterator.next());
+  }
+
+  if (resources.length > 1) {
+    const message = 'WARNING: Multiple ' + resourceName + ' found (' + resources.length + '). Using the first one.';
+    Logger.log(message);
+    logToAuditLogs({
+      timestamp: new Date().toISOString(),
+      agent: 'SYSTEM',
+      action: 'DUPLICATE_DETECTION',
+      status: STATUS.WARNING,
+      details: message
+    });
+  }
+
+  return resources.length > 0 ? resources[0] : null;
+}
+
 /**
  * Main menu for the Financial Restoration AI Team
  */
@@ -36,30 +118,30 @@ function initializeSystem() {
   try {
     // Step 1: Create folder structure
     const rootFolder = createAIAgentsFolders();
-    
+
     // Step 2: Create Financial Command Sheet
     const sheet = createFinancialCommandSheet();
-    
+
     // Step 3: Generate Gatekeeper AgentCard
     const agentCard = generateGatekeeperCard();
-    
-    // Log initialization
+
+    // Log initialization to AuditLogs
     logToAuditLogs({
       timestamp: new Date().toISOString(),
       action: 'SYSTEM_INITIALIZATION',
-      status: 'SUCCESS',
+      status: STATUS.SUCCESS,
       details: 'AI Agents system initialized successfully',
       folderId: rootFolder.getId(),
       sheetId: sheet.getId()
     });
-    
+
     SpreadsheetApp.getUi().alert(
       'System Initialized Successfully!\n\n' +
       'Root Folder: ' + rootFolder.getName() + '\n' +
       'Sheet: ' + sheet.getName() + '\n\n' +
       'AgentCard generated for Gatekeeper'
     );
-    
+
     return {
       folder: rootFolder,
       sheet: sheet,
@@ -69,8 +151,8 @@ function initializeSystem() {
     logToAuditLogs({
       timestamp: new Date().toISOString(),
       action: 'SYSTEM_INITIALIZATION',
-      status: 'FAILURE',
-      error: error.toString()
+      status: STATUS.FAILURE,
+      details: 'System initialization failed: ' + error.toString()
     });
     throw error;
   }
@@ -82,47 +164,88 @@ function initializeSystem() {
  */
 function createAIAgentsFolders() {
   try {
-    // Check if root folder already exists
+    checkRateLimit();
+
+    // Check if root folder already exists with duplicate detection
     const existingFolders = DriveApp.getFoldersByName(FOLDER_STRUCTURE.ROOT);
-    let rootFolder;
-    
-    if (existingFolders.hasNext()) {
-      rootFolder = existingFolders.next();
-      Logger.log('Using existing root folder: ' + rootFolder.getId());
+    let rootFolder = checkForDuplicates(existingFolders, 'root folder "' + FOLDER_STRUCTURE.ROOT + '"');
+
+    if (rootFolder) {
+      logToAuditLogs({
+        timestamp: new Date().toISOString(),
+        agent: 'SYSTEM',
+        action: 'FOLDER_ACCESS',
+        status: STATUS.INFO,
+        details: 'Using existing root folder: ' + rootFolder.getId()
+      });
     } else {
       // Create root folder
       rootFolder = DriveApp.createFolder(FOLDER_STRUCTURE.ROOT);
-      Logger.log('Created root folder: ' + rootFolder.getId());
+      logToAuditLogs({
+        timestamp: new Date().toISOString(),
+        agent: 'SYSTEM',
+        action: 'FOLDER_CREATION',
+        status: STATUS.SUCCESS,
+        details: 'Created root folder: ' + rootFolder.getId()
+      });
     }
-    
+
     // Create subfolders
     FOLDER_STRUCTURE.SUBFOLDERS.forEach(function(subfolderName) {
       const existingSubfolders = rootFolder.getFoldersByName(subfolderName);
-      if (!existingSubfolders.hasNext()) {
-        const subfolder = rootFolder.createFolder(subfolderName);
-        Logger.log('Created subfolder: ' + subfolderName + ' (' + subfolder.getId() + ')');
-        
+      const subfolder = checkForDuplicates(existingSubfolders, 'subfolder "' + subfolderName + '"');
+
+      if (!subfolder) {
+        const newSubfolder = rootFolder.createFolder(subfolderName);
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: 'SYSTEM',
+          action: 'FOLDER_CREATION',
+          status: STATUS.SUCCESS,
+          details: 'Created subfolder: ' + subfolderName + ' (' + newSubfolder.getId() + ')'
+        });
+
         // Set description for data protection
-        subfolder.setDescription('Financial data folder - Business Standard Protection. ' +
+        newSubfolder.setDescription('Financial data folder - Business Standard Protection. ' +
                                 'Access restricted. Created: ' + new Date().toISOString());
-        
+
         // Apply data protection settings based on folder type
-        applyDataProtection(subfolder, subfolderName);
+        applyDataProtection(newSubfolder, subfolderName);
       } else {
-        Logger.log('Subfolder already exists: ' + subfolderName);
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: 'SYSTEM',
+          action: 'FOLDER_ACCESS',
+          status: STATUS.INFO,
+          details: 'Subfolder already exists: ' + subfolderName
+        });
       }
     });
-    
+
     // Set root folder description
     rootFolder.setDescription('AI Agents Root Folder - Financial Restoration System. ' +
                               'Business Standard Data Protection Enforced. ' +
                               'Created: ' + new Date().toISOString());
-    
-    Logger.log('Folder structure created successfully');
+
+    logToAuditLogs({
+      timestamp: new Date().toISOString(),
+      agent: 'SYSTEM',
+      action: 'FOLDER_STRUCTURE_COMPLETE',
+      status: STATUS.SUCCESS,
+      details: 'Folder structure created successfully'
+    });
+
     return rootFolder;
   } catch (error) {
-    Logger.log('Error creating folders: ' + error);
-    throw error;
+    const errorMsg = 'Error creating folders: ' + error.toString();
+    logToAuditLogs({
+      timestamp: new Date().toISOString(),
+      agent: 'SYSTEM',
+      action: 'FOLDER_CREATION',
+      status: STATUS.ERROR,
+      details: errorMsg
+    });
+    throw new Error(errorMsg);
   }
 }
 
@@ -138,12 +261,18 @@ function applyDataProtection(folder, folderType) {
     '03_VAULT': 'Secure vault - encrypted financial records',
     '04_LOGS': 'Audit logs - system activity tracking'
   };
-  
+
   const description = folder.getDescription() + ' | ' + (protectionLevels[folderType] || '');
   folder.setDescription(description);
-  
-  // Log access control application
-  Logger.log('Applied data protection to: ' + folderType);
+
+  // Log access control application to AuditLogs
+  logToAuditLogs({
+    timestamp: new Date().toISOString(),
+    agent: 'SYSTEM',
+    action: 'DATA_PROTECTION_APPLIED',
+    status: STATUS.SUCCESS,
+    details: 'Applied data protection to: ' + folderType
+  });
 }
 
 /**
@@ -151,20 +280,34 @@ function applyDataProtection(folder, folderType) {
  */
 function createFinancialCommandSheet() {
   try {
-    // Check if sheet already exists
+    checkRateLimit();
+
+    // Check if sheet already exists with duplicate detection
     const existingFiles = DriveApp.getFilesByName(SHEET_CONFIG.NAME);
     let spreadsheet;
-    
-    if (existingFiles.hasNext()) {
-      const file = existingFiles.next();
-      spreadsheet = SpreadsheetApp.openById(file.getId());
-      Logger.log('Using existing sheet: ' + spreadsheet.getId());
+    const existingFile = checkForDuplicates(existingFiles, 'sheet "' + SHEET_CONFIG.NAME + '"');
+
+    if (existingFile) {
+      spreadsheet = SpreadsheetApp.openById(existingFile.getId());
+      logToAuditLogs({
+        timestamp: new Date().toISOString(),
+        agent: 'SYSTEM',
+        action: 'SHEET_ACCESS',
+        status: STATUS.INFO,
+        details: 'Using existing sheet: ' + spreadsheet.getId()
+      });
     } else {
       // Create new spreadsheet
       spreadsheet = SpreadsheetApp.create(SHEET_CONFIG.NAME);
-      Logger.log('Created new sheet: ' + spreadsheet.getId());
+      logToAuditLogs({
+        timestamp: new Date().toISOString(),
+        agent: 'SYSTEM',
+        action: 'SHEET_CREATION',
+        status: STATUS.SUCCESS,
+        details: 'Created new sheet: ' + spreadsheet.getId()
+      });
     }
-    
+
     // Create tabs
     SHEET_CONFIG.TABS.forEach(function(tabName, index) {
       let sheet = spreadsheet.getSheetByName(tabName);
@@ -176,32 +319,63 @@ function createFinancialCommandSheet() {
         } else {
           sheet = spreadsheet.insertSheet(tabName);
         }
-        Logger.log('Created tab: ' + tabName);
-        
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: 'SYSTEM',
+          action: 'TAB_CREATION',
+          status: STATUS.SUCCESS,
+          details: 'Created tab: ' + tabName
+        });
+
         // Initialize tab with headers
         initializeTab(sheet, tabName);
       } else {
-        Logger.log('Tab already exists: ' + tabName);
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: 'SYSTEM',
+          action: 'TAB_ACCESS',
+          status: STATUS.INFO,
+          details: 'Tab already exists: ' + tabName
+        });
       }
     });
-    
+
     // Move to AI AGENTS folder if it exists
     try {
       const rootFolders = DriveApp.getFoldersByName(FOLDER_STRUCTURE.ROOT);
-      if (rootFolders.hasNext()) {
-        const rootFolder = rootFolders.next();
+      const rootFolder = checkForDuplicates(rootFolders, 'root folder');
+      if (rootFolder) {
         const file = DriveApp.getFileById(spreadsheet.getId());
         file.moveTo(rootFolder);
-        Logger.log('Moved sheet to AI AGENTS folder');
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: 'SYSTEM',
+          action: 'FILE_MOVE',
+          status: STATUS.SUCCESS,
+          details: 'Moved sheet to AI AGENTS folder'
+        });
       }
     } catch (e) {
-      Logger.log('Could not move sheet to folder: ' + e);
+      logToAuditLogs({
+        timestamp: new Date().toISOString(),
+        agent: 'SYSTEM',
+        action: 'FILE_MOVE',
+        status: STATUS.WARNING,
+        details: 'Could not move sheet to folder: ' + e.toString()
+      });
     }
-    
+
     return spreadsheet;
   } catch (error) {
-    Logger.log('Error creating sheet: ' + error);
-    throw error;
+    const errorMsg = 'Error creating sheet: ' + error.toString();
+    logToAuditLogs({
+      timestamp: new Date().toISOString(),
+      agent: 'SYSTEM',
+      action: 'SHEET_CREATION',
+      status: STATUS.ERROR,
+      details: errorMsg
+    });
+    throw new Error(errorMsg);
   }
 }
 
@@ -319,60 +493,118 @@ function getGatekeeperCard() {
 }
 
 /**
- * Step 5: Store memory in Markdown-KV format
+ * Step 5: Store memory in Markdown-KV format with rotation support
+ * @param {string} key - Memory key
+ * @param {string} value - Memory value
+ * @param {string} agentId - Agent identifier (required)
  */
 function storeMemoryMarkdownKV(key, value, agentId) {
-  agentId = agentId || 'gatekeeper-001';
-  
+  if (!agentId) {
+    throw new Error('Agent ID is required for memory storage');
+  }
+
   try {
+    checkRateLimit();
+
+    // Sanitize inputs
+    key = sanitizeInput(key);
+    value = sanitizeInput(value);
+    agentId = sanitizeInput(agentId);
+
     // Get or create memory file in 04_LOGS
     const rootFolders = DriveApp.getFoldersByName(FOLDER_STRUCTURE.ROOT);
-    if (!rootFolders.hasNext()) {
+    const rootFolder = checkForDuplicates(rootFolders, 'root folder');
+    if (!rootFolder) {
       throw new Error('AI AGENTS folder not found');
     }
-    
-    const rootFolder = rootFolders.next();
+
     const logsFolders = rootFolder.getFoldersByName('04_LOGS');
-    
-    if (!logsFolders.hasNext()) {
+    const logsFolder = checkForDuplicates(logsFolders, '04_LOGS folder');
+
+    if (!logsFolder) {
       throw new Error('04_LOGS folder not found');
     }
-    
-    const logsFolder = logsFolders.next();
+
     const memoryFileName = agentId + '_memory.md';
     const existingFiles = logsFolder.getFilesByName(memoryFileName);
-    
+
     let file;
     let content = '';
     let fileExists = false;
-    
+
     if (existingFiles.hasNext()) {
       file = existingFiles.next();
       content = file.getBlob().getDataAsString();
       fileExists = true;
-    } else {
+
+      // Check for duplicates
+      if (existingFiles.hasNext()) {
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: agentId,
+          action: 'MEMORY_DUPLICATE_WARNING',
+          status: STATUS.WARNING,
+          details: 'Multiple memory files found for ' + agentId + '. Using the first one.'
+        });
+      }
+
+      // Check file size and rotate if needed
+      if (MEMORY_CONFIG.ROTATION_ENABLED && content.length > MEMORY_CONFIG.MAX_FILE_SIZE) {
+        const archiveTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const archiveName = agentId + '_memory_archive_' + archiveTimestamp + '.md';
+        file.setName(archiveName);
+
+        logToAuditLogs({
+          timestamp: new Date().toISOString(),
+          agent: agentId,
+          action: 'MEMORY_ROTATION',
+          status: STATUS.SUCCESS,
+          details: 'Memory file rotated. Archive: ' + archiveName + ', Size: ' + content.length + ' bytes'
+        });
+
+        // Create new memory file
+        fileExists = false;
+        content = '';
+      }
+    }
+
+    if (!fileExists) {
       // Create new memory file
       content = '# Agent Memory: ' + agentId + '\n\n';
       content += '**Created**: ' + new Date().toISOString() + '\n\n';
       content += '## Memory Entries\n\n';
     }
-    
+
     // Add new memory entry in Markdown-KV format
     const timestamp = new Date().toISOString();
     const newEntry = '**' + key + '**: ' + value + ' _(timestamp: ' + timestamp + ')_\n\n';
     content += newEntry;
-    
+
     if (fileExists) {
       file.setContent(content);
     } else {
       file = logsFolder.createFile(memoryFileName, content, MimeType.PLAIN_TEXT);
     }
-    
-    Logger.log('Stored memory in Markdown-KV: ' + key);
+
+    logToAuditLogs({
+      timestamp: timestamp,
+      agent: agentId,
+      action: 'MEMORY_STORED',
+      status: STATUS.SUCCESS,
+      details: 'Stored memory key: ' + key
+    });
+
     return true;
   } catch (error) {
-    Logger.log('Error storing memory: ' + error);
-    return false;
+    const errorMsg = 'Error storing memory: ' + error.toString();
+    logToAuditLogs({
+      timestamp: new Date().toISOString(),
+      agent: agentId || 'UNKNOWN',
+      action: 'MEMORY_STORAGE',
+      status: STATUS.ERROR,
+      details: errorMsg
+    });
+    throw new Error(errorMsg);
   }
 }
 
@@ -383,11 +615,11 @@ function logThoughtSignature(thought) {
   try {
     const spreadsheet = getFinancialCommandSheet();
     const auditSheet = spreadsheet.getSheetByName('AuditLogs');
-    
+
     if (!auditSheet) {
       throw new Error('AuditLogs tab not found');
     }
-    
+
     const timestamp = new Date().toISOString();
     const thoughtSignature = {
       timestamp: timestamp,
@@ -396,59 +628,76 @@ function logThoughtSignature(thought) {
       confidence: thought.confidence || 0.0,
       context: thought.context || {}
     };
-    
+
     // Append to AuditLogs sheet
     auditSheet.appendRow([
       timestamp,
       thought.agent || 'gatekeeper-001',
       thought.action || 'THOUGHT_PROCESS',
-      'LOGGED',
+      STATUS.SUCCESS,
       JSON.stringify(thought.details || {}),
       JSON.stringify(thoughtSignature),
       thought.memory || ''
     ]);
-    
+
     // Also store in Markdown-KV memory
+    const agentId = thought.agent || 'gatekeeper-001';
     storeMemoryMarkdownKV(
       'thought_' + timestamp,
       JSON.stringify(thoughtSignature),
-      thought.agent
+      agentId
     );
-    
-    Logger.log('Logged thought signature: ' + timestamp);
+
+    logToAuditLogs({
+      timestamp: timestamp,
+      agent: agentId,
+      action: 'THOUGHT_SIGNATURE_LOGGED',
+      status: STATUS.SUCCESS,
+      details: 'Logged thought signature for decision: ' + thoughtSignature.decision
+    });
+
     return true;
   } catch (error) {
-    Logger.log('Error logging thought signature: ' + error);
-    return false;
+    const errorMsg = 'Error logging thought signature: ' + error.toString();
+    logToAuditLogs({
+      timestamp: new Date().toISOString(),
+      agent: thought.agent || 'UNKNOWN',
+      action: 'THOUGHT_SIGNATURE',
+      status: STATUS.ERROR,
+      details: errorMsg
+    });
+    throw new Error(errorMsg);
   }
 }
 
 /**
- * Log general events to AuditLogs
+ * Log general events to AuditLogs with standardized error handling
  */
 function logToAuditLogs(logEntry) {
   try {
     const spreadsheet = getFinancialCommandSheet();
     const auditSheet = spreadsheet.getSheetByName('AuditLogs');
-    
+
     if (!auditSheet) {
-      Logger.log('AuditLogs tab not found, skipping log');
-      return false;
+      throw new Error('AuditLogs tab not found - cannot log event');
     }
-    
+
     auditSheet.appendRow([
       logEntry.timestamp || new Date().toISOString(),
       logEntry.agent || 'SYSTEM',
       logEntry.action || 'UNKNOWN',
-      logEntry.status || 'INFO',
+      logEntry.status || STATUS.INFO,
       logEntry.details || '',
       logEntry.thoughtSignature || '',
       logEntry.memory || ''
     ]);
-    
+
     return true;
   } catch (error) {
-    Logger.log('Error logging to audit: ' + error);
+    // Fallback to Logger if AuditLogs unavailable
+    Logger.log('AUDIT_LOG_ERROR: ' + error.toString());
+    Logger.log('Failed to log: ' + JSON.stringify(logEntry));
+    // Don't throw - allow execution to continue
     return false;
   }
 }
@@ -468,7 +717,7 @@ function getFinancialCommandSheet() {
 }
 
 /**
- * Validate financial data (Gatekeeper function)
+ * Validate financial data with comprehensive checks (Gatekeeper function)
  */
 function validateFinancialData(data) {
   const validation = {
@@ -476,33 +725,71 @@ function validateFinancialData(data) {
     errors: [],
     warnings: []
   };
-  
-  // Basic validation checks
-  if (!data.amount || isNaN(data.amount)) {
-    validation.isValid = false;
-    validation.errors.push('Invalid amount');
+
+  // Sanitize input data
+  if (data.creditor) {
+    data.creditor = sanitizeInput(data.creditor);
   }
-  
+  if (data.type) {
+    data.type = sanitizeInput(data.type);
+  }
+
+  // Validate amount
+  if (!data.amount) {
+    validation.isValid = false;
+    validation.errors.push('Amount is required');
+  } else if (isNaN(data.amount)) {
+    validation.isValid = false;
+    validation.errors.push('Invalid amount: must be a valid number');
+  } else if (data.amount < 0) {
+    validation.isValid = false;
+    validation.errors.push('Invalid amount: cannot be negative');
+  } else if (data.amount > 999999999.99) {
+    validation.warnings.push('Amount is unusually large: ' + data.amount);
+  }
+
+  // Validate type
+  const validTypes = ['debt', 'tax', 'income', 'expense', 'asset'];
   if (!data.type) {
     validation.isValid = false;
-    validation.errors.push('Missing data type');
+    validation.errors.push('Data type is required');
+  } else if (!validTypes.includes(data.type.toLowerCase())) {
+    validation.isValid = false;
+    validation.errors.push('Invalid type: must be one of ' + validTypes.join(', '));
   }
-  
-  // Log thought signature for validation decision
+
+  // Validate creditor name length
+  if (data.creditor && data.creditor.length > 500) {
+    validation.isValid = false;
+    validation.errors.push('Creditor name too long (max 500 characters)');
+  }
+
+  // Validate date format if provided
+  if (data.dueDate) {
+    const dateObj = new Date(data.dueDate);
+    if (isNaN(dateObj.getTime())) {
+      validation.isValid = false;
+      validation.errors.push('Invalid date format for dueDate');
+    }
+  }
+
+  // Log thought signature with full error context (Critical Issue #2)
   logThoughtSignature({
     agent: 'gatekeeper-001',
     action: 'DATA_VALIDATION',
     decision: validation.isValid ? 'APPROVED' : 'REJECTED',
-    reasoning: validation.isValid ? 
-      'All validation checks passed' : 
+    reasoning: validation.isValid ?
+      'All validation checks passed' :
       'Validation failed: ' + validation.errors.join(', '),
     confidence: validation.isValid ? 1.0 : 0.0,
     details: {
       data: data,
-      validation: validation
+      validation: validation,
+      errors: validation.errors,  // Explicit error context
+      warnings: validation.warnings  // Explicit warning context
     }
   });
-  
+
   return validation;
 }
 
@@ -545,8 +832,14 @@ function routeDataToFolder(data, validationStatus) {
  * Demo function to show the system in action
  */
 function demoSystem() {
-  Logger.log('=== Starting Demo ===');
-  
+  logToAuditLogs({
+    timestamp: new Date().toISOString(),
+    agent: 'SYSTEM',
+    action: 'DEMO_START',
+    status: STATUS.INFO,
+    details: 'Starting system demo'
+  });
+
   // Example financial data
   const sampleData = {
     type: 'debt',
@@ -555,17 +848,35 @@ function demoSystem() {
     cleaned: true,
     safe: false
   };
-  
+
   // Validate
   const validation = validateFinancialData(sampleData);
-  Logger.log('Validation: ' + JSON.stringify(validation));
-  
+  logToAuditLogs({
+    timestamp: new Date().toISOString(),
+    agent: 'SYSTEM',
+    action: 'DEMO_VALIDATION',
+    status: validation.isValid ? STATUS.SUCCESS : STATUS.ERROR,
+    details: 'Validation result: ' + JSON.stringify(validation)
+  });
+
   // Route
   const folder = routeDataToFolder(sampleData, validation);
-  Logger.log('Routed to: ' + folder);
-  
-  // Store memory
-  storeMemoryMarkdownKV('demo_run', 'System demo completed successfully');
-  
-  Logger.log('=== Demo Complete ===');
+  logToAuditLogs({
+    timestamp: new Date().toISOString(),
+    agent: 'SYSTEM',
+    action: 'DEMO_ROUTING',
+    status: STATUS.SUCCESS,
+    details: 'Routed to folder: ' + folder
+  });
+
+  // Store memory with required agentId
+  storeMemoryMarkdownKV('demo_run', 'System demo completed successfully', 'gatekeeper-001');
+
+  logToAuditLogs({
+    timestamp: new Date().toISOString(),
+    agent: 'SYSTEM',
+    action: 'DEMO_COMPLETE',
+    status: STATUS.SUCCESS,
+    details: 'Demo completed successfully'
+  });
 }
