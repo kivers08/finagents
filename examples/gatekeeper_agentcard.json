@@ -1,0 +1,56 @@
+{
+  "agent_id": "gatekeeper-001",
+  "agent_name": "Financial Gatekeeper",
+  "agent_type": "gatekeeper",
+  "version": "1.0.0",
+  "protocol": "A2A",
+  "created": "2026-02-11T06:34:17.763Z",
+  "capabilities": [
+    "financial_data_validation",
+    "access_control",
+    "data_routing",
+    "security_enforcement"
+  ],
+  "endpoints": {
+    "validate": "validateFinancialData",
+    "route": "routeDataToFolder",
+    "authorize": "authorizeAccess"
+  },
+  "memory": {
+    "format": "markdown-kv",
+    "storage": "04_LOGS/gatekeeper_memory.md",
+    "structure": {
+      "type": "key-value",
+      "syntax": "markdown",
+      "example": "**key**: value"
+    }
+  },
+  "thought_signature": {
+    "enabled": true,
+    "log_destination": "AuditLogs",
+    "format": "structured",
+    "fields": [
+      "timestamp",
+      "decision",
+      "reasoning",
+      "confidence"
+    ]
+  },
+  "security": {
+    "level": "business_standard",
+    "encryption": "at_rest",
+    "access_control": "role_based",
+    "audit_logging": "enabled",
+    "data_classification": "financial"
+  },
+  "workflow": {
+    "step_1": "receive_financial_data",
+    "step_2": "validate_data_format",
+    "step_3": "check_security_clearance",
+    "step_4": "classify_data_sensitivity",
+    "step_5": "store_memory_markdown_kv",
+    "step_6": "route_to_appropriate_folder",
+    "step_7": "update_audit_log",
+    "step_8": "log_thought_signature"
+  }
+}
